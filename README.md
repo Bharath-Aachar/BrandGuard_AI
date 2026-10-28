@@ -150,30 +150,62 @@ pnpm -v
 pnpm install
 ```
 
-### 2. Environment Configuration (Optional for Supabase)
+### 2. Environment Configuration
+
 Copy the `.env.example` file to `.env.local`:
 ```powershell
 cp .env.example .env.local
 ```
+
+#### Production Mode (Supabase Connected):
 Fill in your Supabase credentials (found in Supabase Project Settings -> API):
 ```env
+# Client-accessible credentials (safe for browser)
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-```
-> **Note**: If you do not configure Supabase, BrandGuard AI automatically activates **Demo Storage Mode** via local persistence. The application works out-of-the-box without requiring a database setup.
 
-### 3. Database Migration (If Using Supabase)
-In your Supabase project dashboard, open the **SQL Editor** and execute the migration script located at:
-```text
-supabase/migrations/001_initial_schema.sql
+# Server-only credentials (NEVER expose to the browser!)
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+
+# Optional LLM Key for contextual analysis
+GEMINI_API_KEY=your-gemini-key
+OPENAI_API_KEY=your-openai-key
 ```
-This provisions:
-- `profiles` with role-based check constraints (`creator`, `reviewer`, `admin`)
-- `brand_policies` for rulebooks and tone settings
-- `content_scans` and `scan_violations`
-- `content_submissions` and `reviews`
-- `audit_events` with Row-Level Security (RLS) policies
+
+#### Demo Storage Mode (Zero-Config / Offline):
+When `NEXT_PUBLIC_SUPABASE_URL` is omitted or contains placeholder values (`your-project-id`), BrandGuard AI automatically activates **Demo Storage Mode**:
+- Uses isolated local state and `localStorage` caching in the browser.
+- Simulates Creator and Reviewer roles with pre-seeded demo submissions and guidelines.
+- Production API endpoints reject unauthenticated requests with `401 Unauthorized`.
+- Does not silently fall back to insecure memory in production; production mode requires valid database connectivity.
+
+---
+
+### 3. Database Migrations & RLS Setup (If Using Supabase)
+
+In your Supabase project dashboard, open the **SQL Editor** and run the migration scripts in sequential order:
+
+1. **`supabase/migrations/001_initial_schema.sql`**:
+   - Provisions tables: `profiles`, `brand_policies`, `content_scans`, `scan_violations`, `content_submissions`, `reviews`, `audit_events`.
+   - Enables Row Level Security (RLS) on all tables.
+2. **`supabase/migrations/002_security_and_rls_hardening.sql`**:
+   - Enforces strict role-based access control (RBAC) via `public.is_reviewer_or_admin()`.
+   - Restricts creators to viewing and updating their own submissions.
+   - Enforces **Separation of Duties**: Reviewers cannot approve or reject their own submissions.
+   - Seals `audit_events` from client-side forgery or deletion.
+3. **`supabase/migrations/003_persistence_alignment.sql`**:
+   - Pre-populates default corporate brand policies (`fintech`, `healthcare`, `enterprise`).
+   - Ensures flexible ID indexing across historical scans and submissions.
+
+#### Configuring Supabase Authentication & User Roles:
+1. Enable Email/Password or Magic Link auth in Supabase Dashboard (`Authentication -> Providers`).
+2. When a user registers, their profile is automatically inserted into `public.profiles` with the default role `creator`.
+3. To assign a compliance officer or reviewer, execute:
+   ```sql
+   UPDATE public.profiles SET role = 'reviewer' WHERE email = 'reviewer@company.com';
+   ```
+
+---
 
 ### 4. Run the Development Server
 ```powershell
@@ -181,16 +213,26 @@ pnpm dev
 ```
 Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
+---
+
 ### 5. Run Automated Tests
 ```powershell
 pnpm test
 ```
-Runs the Vitest suite covering empty content, clean content, prohibited terms, regex boundaries, disclaimers, repeated phrases, scoring, server permissions, and database fallback.
+Executes the comprehensive Vitest suite (67 tests across 4 suites):
+- **`brandSafetyEngine.test.ts` (18 tests)**: Boundary regex safety, special character handling, forbidden claims, tone sliders, disclaimers, and empty text scoring.
+- **`security.test.ts` (22 tests)**: Server authentication (401), role barriers (403), impersonation rejection, separation of duties, IDOR isolation, and audit immutability (405).
+- **`persistence.test.ts` (17 tests)**: Supabase submission persistence, revision versioning, review recording, atomic status rollback on partial failure, duplicate review prevention, and policy/scan storage.
+- **`workflow.test.ts` (10 tests)**: Creator-reviewer state transitions, audit event generation, and database error resilience.
+
+---
 
 ### 6. Run Linter
 ```powershell
 pnpm lint
 ```
+
+---
 
 ### 7. Production Build
 ```powershell

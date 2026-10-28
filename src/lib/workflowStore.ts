@@ -7,7 +7,7 @@ import {
   ReviewWorkflowStatus,
 } from '@/types/brandguard';
 import { analyzeBrandContent, DEFAULT_POLICIES } from './brandSafetyEngine';
-import { getServerSupabaseClient } from './supabaseServer';
+import { getServerSupabaseClient, isServerSupabaseConfigured } from './supabaseServer';
 
 // Default Demo Users for role testing & demonstration
 export const DEMO_USERS: Record<string, UserProfile> = {
@@ -140,9 +140,17 @@ export const INITIAL_AUDIT_EVENTS: AuditEvent[] = [
 
 // In-Memory store for fast fallback when database is not connected
 const globalWorkflowState = {
-  submissions: [...INITIAL_SUBMISSIONS],
-  auditEvents: [...INITIAL_AUDIT_EVENTS],
+  submissions: JSON.parse(JSON.stringify(INITIAL_SUBMISSIONS)) as ContentSubmission[],
+  auditEvents: JSON.parse(JSON.stringify(INITIAL_AUDIT_EVENTS)) as AuditEvent[],
 };
+
+/**
+ * Resets workflow state to initial seed values (primarily for testing).
+ */
+export function resetWorkflowStateForTesting() {
+  globalWorkflowState.submissions = JSON.parse(JSON.stringify(INITIAL_SUBMISSIONS));
+  globalWorkflowState.auditEvents = JSON.parse(JSON.stringify(INITIAL_AUDIT_EVENTS));
+}
 
 /**
  * Server-enforced review submission validator.
@@ -152,16 +160,89 @@ export function assertReviewerPermission(role: UserRole): boolean {
   return role === 'reviewer' || role === 'admin';
 }
 
-export async function getWorkflowSubmissions(): Promise<ContentSubmission[]> {
+/**
+ * Retrieves a single submission by its ID.
+ */
+export async function getSubmissionById(id: string): Promise<ContentSubmission | null> {
   const supabase = getServerSupabaseClient();
-  if (supabase) {
+  if (isServerSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase
         .from('content_submissions')
         .select('*, reviews(*)')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`Database error fetching submission: ${error.message}`);
+      }
+
+      if (data) {
+        return {
+          id: data.id,
+          title: data.title,
+          content: data.content,
+          policyId: data.policy_id,
+          version: data.version,
+          creatorId: data.creator_id || 'unknown',
+          creatorName: data.creator_name,
+          status: data.status as ReviewWorkflowStatus,
+          reviews: (data.reviews || []).map((r: Record<string, unknown>) => ({
+            id: r.id as string,
+            submissionId: r.submission_id as string,
+            reviewerId: (r.reviewer_id as string) || 'unknown',
+            reviewerName: r.reviewer_name as string,
+            reviewerRole: r.reviewer_role as UserRole,
+            status: r.decision as ReviewWorkflowStatus,
+            comments: r.comments as string,
+            revisionVersion: r.revision_version as number,
+            createdAt: r.created_at as string,
+          })),
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
+        };
+      }
+      return null;
+    } catch (err) {
+      console.error('Supabase fetch submission error:', err);
+      throw err;
+    }
+  }
+
+  const found = globalWorkflowState.submissions.find((s) => s.id === id);
+  return found ? JSON.parse(JSON.stringify(found)) : null;
+}
+
+/**
+ * Retrieves all submissions visible to the requesting user.
+ * Reviewers and Admins can view all submissions.
+ * Creators can ONLY view their own submissions.
+ */
+export async function getWorkflowSubmissions(currentUser?: UserProfile): Promise<ContentSubmission[]> {
+  const supabase = getServerSupabaseClient();
+  if (isServerSupabaseConfigured && supabase) {
+    try {
+      let query = supabase
+        .from('content_submissions')
+        .select('*, reviews(*)')
         .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
+      // Enforce ownership filter at database query level for creators
+      if (currentUser && currentUser.role === 'creator') {
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentUser.id);
+        if (isUuid) {
+          query = query.eq('creator_id', currentUser.id);
+        } else {
+          query = query.or(`creator_id.eq.${currentUser.id},creator_name.eq.${currentUser.name}`);
+        }
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        throw new Error(`Database error fetching submissions: ${error.message}`);
+      }
+
+      if (data) {
         return data.map((item) => ({
           id: item.id,
           title: item.title,
@@ -186,12 +267,19 @@ export async function getWorkflowSubmissions(): Promise<ContentSubmission[]> {
           updatedAt: item.updated_at,
         }));
       }
+      return [];
     } catch (err) {
-      console.warn('Supabase fetch failed, falling back to local workflow state:', err);
+      console.error('Database fetch failed:', err);
+      throw err;
     }
   }
 
-  return globalWorkflowState.submissions;
+  // Local/demo fallback: enforce ownership filtering in memory
+  let list = globalWorkflowState.submissions;
+  if (currentUser && currentUser.role === 'creator') {
+    list = list.filter((s) => s.creatorId === currentUser.id);
+  }
+  return JSON.parse(JSON.stringify(list));
 }
 
 export async function createOrUpdateSubmission(payload: {
@@ -201,33 +289,51 @@ export async function createOrUpdateSubmission(payload: {
   policyId: string;
   creator: UserProfile;
 }): Promise<ContentSubmission> {
+  if (!payload.content || typeof payload.content !== 'string' || !payload.content.trim()) {
+    throw new Error('Submission content cannot be empty.');
+  }
+
   const policy = DEFAULT_POLICIES[payload.policyId] || DEFAULT_POLICIES.fintech;
   const scanResult = analyzeBrandContent(payload.content, policy);
 
-  let existingIndex = -1;
+  let existing: ContentSubmission | null = null;
   if (payload.id) {
-    existingIndex = globalWorkflowState.submissions.findIndex((s) => s.id === payload.id);
+    existing = await getSubmissionById(payload.id);
+    if (!existing) {
+      const idx = globalWorkflowState.submissions.findIndex((s) => s.id === payload.id);
+      if (idx >= 0) existing = globalWorkflowState.submissions[idx];
+    }
   }
 
   const now = new Date().toISOString();
   let submission: ContentSubmission;
+  let auditEvent: AuditEvent;
 
-  if (existingIndex >= 0) {
-    // New Revision by Creator
-    const existing = globalWorkflowState.submissions[existingIndex];
+  if (existing) {
+    // Revising existing submission — enforce ownership verification!
+    if (existing.creatorId && existing.creatorId !== payload.creator.id && payload.creator.role !== 'admin') {
+      throw new Error('Forbidden: You do not have permission to modify a submission created by another user.');
+    }
+
     submission = {
       ...existing,
       content: payload.content,
       policyId: payload.policyId,
       version: existing.version + 1,
-      status: 'pending_review',
+      status: 'pending_review', // Revisions reset status to pending_review
       scanResult,
       updatedAt: now,
     };
-    globalWorkflowState.submissions[existingIndex] = submission;
 
-    // Record Audit Event
-    const auditEvent: AuditEvent = {
+    // Update in-memory state
+    const existingIndex = globalWorkflowState.submissions.findIndex((s) => s.id === payload.id);
+    if (existingIndex >= 0) {
+      globalWorkflowState.submissions[existingIndex] = submission;
+    } else {
+      globalWorkflowState.submissions.unshift(submission);
+    }
+
+    auditEvent = {
       id: `aud-${Date.now()}`,
       eventType: 'submission_revised',
       actorId: payload.creator.id,
@@ -256,8 +362,7 @@ export async function createOrUpdateSubmission(payload: {
     };
     globalWorkflowState.submissions.unshift(submission);
 
-    // Record Audit Event
-    const auditEvent: AuditEvent = {
+    auditEvent = {
       id: `aud-${Date.now()}`,
       eventType: 'submission_created',
       actorId: payload.creator.id,
@@ -270,23 +375,41 @@ export async function createOrUpdateSubmission(payload: {
     globalWorkflowState.auditEvents.unshift(auditEvent);
   }
 
-  // Persist to Supabase if available
+  // Persist to Supabase if configured
   const supabase = getServerSupabaseClient();
-  if (supabase) {
+  if (isServerSupabaseConfigured && supabase) {
     try {
-      await supabase.from('content_submissions').upsert({
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.creator.id);
+      const { error: upsertErr } = await supabase.from('content_submissions').upsert({
         id: submission.id,
         title: submission.title,
         content: submission.content,
         policy_id: submission.policyId,
         version: submission.version,
-        creator_id: null,
+        creator_id: isUuid ? payload.creator.id : null,
         creator_name: submission.creatorName,
         status: submission.status,
         updated_at: submission.updatedAt,
       });
+
+      if (upsertErr) {
+        throw new Error(`Database error saving submission: ${upsertErr.message}`);
+      }
+
+      // Record audit event only after successful submission commit
+      await supabase.from('audit_events').insert({
+        id: auditEvent.id,
+        event_type: auditEvent.eventType,
+        actor_id: auditEvent.actorId,
+        actor_name: auditEvent.actorName,
+        actor_role: auditEvent.actorRole,
+        target_id: auditEvent.targetId,
+        details: auditEvent.details,
+        created_at: auditEvent.timestamp,
+      });
     } catch (e) {
-      console.warn('Supabase submission upsert error:', e);
+      console.error('Supabase submission upsert failed:', e);
+      throw e;
     }
   }
 
@@ -299,19 +422,54 @@ export async function recordReviewDecision(payload: {
   decision: 'approved' | 'rejected' | 'changes_requested';
   comments: string;
 }): Promise<ContentSubmission> {
-  // Server-Enforced Permission Check:
+  // 1. Server-Enforced Role Check
   if (!assertReviewerPermission(payload.reviewer.role)) {
     throw new Error(
       `Permission Denied: User role "${payload.reviewer.role}" is not authorized to submit compliance reviews. Human reviewer or admin role required.`
     );
   }
 
-  const subIndex = globalWorkflowState.submissions.findIndex((s) => s.id === payload.submissionId);
-  if (subIndex === -1) {
+  // 2. Validate Decision
+  const validDecisions = ['approved', 'rejected', 'changes_requested'];
+  if (!validDecisions.includes(payload.decision)) {
+    throw new Error(
+      `Invalid decision "${payload.decision}". Supported decisions: ${validDecisions.join(', ')}.`
+    );
+  }
+
+  // 3. Validate Comments
+  if (!payload.comments || typeof payload.comments !== 'string' || !payload.comments.trim()) {
+    throw new Error('Review comments are required and cannot be empty.');
+  }
+
+  // 4. Verify Submission Exists (checks database first if online)
+  let sub = await getSubmissionById(payload.submissionId);
+  if (!sub) {
+    const subIndex = globalWorkflowState.submissions.findIndex((s) => s.id === payload.submissionId);
+    if (subIndex >= 0) sub = globalWorkflowState.submissions[subIndex];
+  }
+
+  if (!sub) {
     throw new Error(`Submission "${payload.submissionId}" not found.`);
   }
 
-  const sub = globalWorkflowState.submissions[subIndex];
+  // 5. Enforce Separation of Duties: Reviewers CANNOT approve or reject their own submissions!
+  if (sub.creatorId && sub.creatorId === payload.reviewer.id) {
+    throw new Error(
+      'Separation of duties violation: Reviewers cannot approve, reject, or request changes on their own submissions.'
+    );
+  }
+
+  // 6. Concurrency & Duplicate Check: Prevent duplicate review decisions on the same revision by the same reviewer
+  const hasDuplicate = sub.reviews.some(
+    (r) => r.revisionVersion === sub.version && r.reviewerId === payload.reviewer.id
+  );
+  if (hasDuplicate) {
+    throw new Error(
+      `Duplicate review: A review decision has already been recorded by ${payload.reviewer.name} for revision v${sub.version}.`
+    );
+  }
+
   const now = new Date().toISOString();
 
   const newReview: ReviewDecision = {
@@ -333,9 +491,6 @@ export async function recordReviewDecision(payload: {
     updatedAt: now,
   };
 
-  globalWorkflowState.submissions[subIndex] = updatedSub;
-
-  // Record Audit Event
   const auditEvent: AuditEvent = {
     id: `aud-${Date.now()}`,
     eventType: 'review_decided',
@@ -346,20 +501,27 @@ export async function recordReviewDecision(payload: {
     details: `Review decision "${payload.decision}" recorded for "${sub.title}" (v${sub.version}) by ${payload.reviewer.name}.`,
     timestamp: now,
   };
-  globalWorkflowState.auditEvents.unshift(auditEvent);
 
-  // Persist to Supabase if available
+  // Persist to Supabase if configured (Atomic sequence with rollback on review failure)
   const supabase = getServerSupabaseClient();
-  if (supabase) {
+  if (isServerSupabaseConfigured && supabase) {
     try {
-      await supabase.from('content_submissions').update({
+      // Step A: Update submission status in database
+      const { error: subErr } = await supabase.from('content_submissions').update({
         status: updatedSub.status,
         updated_at: updatedSub.updatedAt,
       }).eq('id', updatedSub.id);
 
-      await supabase.from('reviews').insert({
+      if (subErr) {
+        throw new Error(`Database error updating submission status: ${subErr.message}`);
+      }
+
+      // Step B: Insert review record
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.reviewer.id);
+      const { error: revErr } = await supabase.from('reviews').insert({
         id: newReview.id,
         submission_id: updatedSub.id,
+        reviewer_id: isUuid ? payload.reviewer.id : null,
         reviewer_name: newReview.reviewerName,
         reviewer_role: newReview.reviewerRole,
         decision: newReview.status,
@@ -367,24 +529,65 @@ export async function recordReviewDecision(payload: {
         revision_version: newReview.revisionVersion,
         created_at: newReview.createdAt,
       });
+
+      if (revErr) {
+        // Partial Failure Handling: Roll back submission status to pre-decision state
+        await supabase.from('content_submissions').update({
+          status: sub.status,
+          updated_at: sub.updatedAt,
+        }).eq('id', updatedSub.id);
+        throw new Error(`Database error saving review: ${revErr.message}`);
+      }
+
+      // Step C: Record audit event only after review successfully committed
+      await supabase.from('audit_events').insert({
+        id: auditEvent.id,
+        event_type: auditEvent.eventType,
+        actor_id: auditEvent.actorId,
+        actor_name: auditEvent.actorName,
+        actor_role: auditEvent.actorRole,
+        target_id: auditEvent.targetId,
+        details: auditEvent.details,
+        created_at: auditEvent.timestamp,
+      });
     } catch (e) {
-      console.warn('Supabase review insert error:', e);
+      console.error('Supabase review persistence failed:', e);
+      throw e;
     }
   }
+
+  // Update in-memory state after database success
+  const subIndex = globalWorkflowState.submissions.findIndex((s) => s.id === payload.submissionId);
+  if (subIndex >= 0) {
+    globalWorkflowState.submissions[subIndex] = updatedSub;
+  } else {
+    globalWorkflowState.submissions.unshift(updatedSub);
+  }
+  globalWorkflowState.auditEvents.unshift(auditEvent);
 
   return updatedSub;
 }
 
-export async function getAuditEvents(): Promise<AuditEvent[]> {
+export async function getAuditEvents(currentUser?: UserProfile): Promise<AuditEvent[]> {
   const supabase = getServerSupabaseClient();
-  if (supabase) {
+  if (isServerSupabaseConfigured && supabase) {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('audit_events')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
+      // Scoped access for creators: only their own events
+      if (currentUser && currentUser.role === 'creator') {
+        query = query.eq('actor_id', currentUser.id);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        throw new Error(`Database error fetching audit events: ${error.message}`);
+      }
+
+      if (data) {
         return data.map((d) => ({
           id: d.id,
           eventType: d.event_type,
@@ -397,10 +600,17 @@ export async function getAuditEvents(): Promise<AuditEvent[]> {
           metadata: d.metadata,
         }));
       }
+      return [];
     } catch (e) {
-      console.warn('Supabase audit fetch error:', e);
+      console.error('Supabase audit fetch failed:', e);
+      throw e;
     }
   }
 
-  return globalWorkflowState.auditEvents;
+  let events = globalWorkflowState.auditEvents;
+  if (currentUser && currentUser.role === 'creator') {
+    events = events.filter((e) => e.actorId === currentUser.id);
+  }
+
+  return JSON.parse(JSON.stringify(events));
 }
