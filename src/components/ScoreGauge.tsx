@@ -1,11 +1,12 @@
 'use client';
 
 import React from 'react';
-import { ShieldCheck, AlertTriangle, XCircle, Award } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, XCircle, Award, HelpCircle } from 'lucide-react';
+import { ScanStatus } from '@/types/brandguard';
 
 interface ScoreGaugeProps {
   score: number;
-  status: 'approved' | 'review_required' | 'rejected';
+  status: ScanStatus;
   size?: number;
 }
 
@@ -15,22 +16,25 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({ score, status, size = 18
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (score / 100) * circumference;
 
-  let colorGradient = 'from-emerald-400 to-teal-500';
   let strokeColor = '#10b981';
   let grade = 'A+';
   let badgeLabel = 'Compliant';
   let badgeBg = 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400';
   let Icon = ShieldCheck;
 
-  if (score < 70 || status === 'rejected') {
-    colorGradient = 'from-rose-500 to-red-600';
+  if (status === 'not_scanned') {
+    strokeColor = '#64748b';
+    grade = '–';
+    badgeLabel = 'Not Scanned';
+    badgeBg = 'bg-slate-500/15 border-slate-500/30 text-slate-400';
+    Icon = HelpCircle;
+  } else if (score < 70 || status === 'rejected') {
     strokeColor = '#f43f5e';
     grade = 'F';
     badgeLabel = 'Critical Risk';
     badgeBg = 'bg-rose-500/15 border-rose-500/30 text-rose-400';
     Icon = XCircle;
   } else if (score < 85 || status === 'review_required') {
-    colorGradient = 'from-amber-400 to-orange-500';
     strokeColor = '#f59e0b';
     grade = 'B';
     badgeLabel = 'Advisory Warning';
@@ -66,7 +70,7 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({ score, status, size = 18
             stroke={strokeColor}
             strokeWidth={strokeWidth}
             strokeDasharray={circumference}
-            strokeDashoffset={offset}
+            strokeDashoffset={status === 'not_scanned' ? circumference : offset}
             strokeLinecap="round"
             fill="transparent"
             className="transition-all duration-1000 ease-out"
@@ -75,7 +79,9 @@ export const ScoreGauge: React.FC<ScoreGaugeProps> = ({ score, status, size = 18
 
         {/* Center content */}
         <div className="absolute flex flex-col items-center justify-center text-center">
-          <span className="text-3xl font-black tracking-tight text-white">{score}</span>
+          <span className="text-3xl font-black tracking-tight text-white">
+            {status === 'not_scanned' ? '–' : score}
+          </span>
           <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">/ 100 Safety</span>
           <div className="flex items-center gap-1 mt-1">
             <Award className="w-3.5 h-3.5 text-indigo-400" />

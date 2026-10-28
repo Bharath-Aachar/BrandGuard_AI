@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Shield, Sparkles, Activity, FileText, Download, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Shield, Sparkles, Activity, FileText, Download, CheckCircle2 } from 'lucide-react';
 import { BrandPolicy } from '../types/brandguard';
 
 interface NavbarProps {

@@ -1,17 +1,15 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
-  ShieldCheck,
   CheckCircle,
   Copy,
   CheckCheck,
   Printer,
   Award,
   Hash,
-  Clock,
-  FileText,
+  Info,
 } from 'lucide-react';
 import { BrandPolicy, ScanResult } from '../types/brandguard';
 
@@ -29,21 +27,76 @@ export const AuditModal: React.FC<AuditModalProps> = ({
   currentPolicy,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [computedHash, setComputedHash] = useState<string>('Computing SHA-256...');
+  const [certificateId, setCertificateId] = useState<string>('BG-CERT-PENDING');
+
+  const certDate = scanResult.scannedAt || new Date().toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+
+  // Dynamically compute real SHA-256 hash from actual scan record
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let isMounted = true;
+    const payload = JSON.stringify({
+      policy: currentPolicy.name,
+      industry: currentPolicy.industry,
+      score: scanResult.overallScore,
+      status: scanResult.status,
+      wordCount: scanResult.wordCount,
+      violationsCount: scanResult.violations.length,
+      timestamp: certDate,
+      originalText: scanResult.originalText || '',
+    });
+
+    async function computeHash() {
+      try {
+        if (typeof window !== 'undefined' && window.crypto?.subtle) {
+          const buffer = new TextEncoder().encode(payload);
+          const digest = await window.crypto.subtle.digest('SHA-256', buffer);
+          const hashHex =
+            '0x' +
+            Array.from(new Uint8Array(digest))
+              .map((b) => b.toString(16).padStart(2, '0'))
+              .join('');
+
+          if (isMounted) {
+            setComputedHash(hashHex);
+            setCertificateId(`BG-CERT-${hashHex.slice(2, 10).toUpperCase()}`);
+          }
+        } else {
+          if (isMounted) {
+            setComputedHash('0xUnavailableInNonSecureContext');
+            setCertificateId(`BG-CERT-${Date.now().toString().slice(-6)}`);
+          }
+        }
+      } catch (err) {
+        console.error('Hash generation error:', err);
+        if (isMounted) {
+          setComputedHash('0xLocalIntegrityUnavailable');
+        }
+      }
+    }
+
+    computeHash();
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, currentPolicy, scanResult, certDate]);
 
   if (!isOpen) return null;
 
-  const certificateId = 'BG-CERT-884920';
-  const certDate = 'October 26, 2026';
-  const certHash = '0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069';
-
   const generateReportText = () => {
     return `=====================================================
-BRANDGUARD AI ENTERPRISE COMPLIANCE CERTIFICATE
+BRANDGUARD AI COMPLIANCE AUDIT CERTIFICATE
 =====================================================
 Certificate ID: ${certificateId}
 Date of Audit: ${certDate}
-Verification Hash: ${certHash}
-Enforced Rulebook: ${currentPolicy.name} (${currentPolicy.industry})
+Computed SHA-256 Hash: ${computedHash}
+Active Rulebook: ${currentPolicy.name} (${currentPolicy.industry})
 Overall Safety Score: ${scanResult.overallScore}/100
 Verdict: ${scanResult.status.toUpperCase()}
 
@@ -58,9 +111,10 @@ VIOLATION SUMMARY:
 Total Detected Issues: ${scanResult.violations.length}
 ${scanResult.violations.map((v, i) => `  ${i + 1}. [${v.severity.toUpperCase()}] ${v.title} - Rule: ${v.ruleViolated}`).join('\n')}
 
-CERTIFICATION SIGN-OFF:
-Verified by BrandGuard AI Autonomous Sentinel Engine v4.2.
-Complies with SOC-2, FTC Truth in Advertising, and Enterprise Governance Standards.
+VERIFICATION STATEMENT:
+Computed dynamically by BrandGuard AI Sentinel Engine via SHA-256 payload digest.
+Evaluated against FTC truth-in-advertising principles and active brand policy parameters.
+Disclaimer: This audit certificate evaluates heuristic policy compliance and does not constitute formal legal counsel.
 =====================================================`;
   };
 
@@ -77,7 +131,6 @@ Complies with SOC-2, FTC Truth in Advertising, and Enterprise Governance Standar
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
       <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto glass-panel rounded-3xl p-6 sm:p-8 border border-indigo-500/30 shadow-2xl space-y-6">
-        
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -94,10 +147,10 @@ Complies with SOC-2, FTC Truth in Advertising, and Enterprise Governance Standar
             </div>
           </div>
           <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white uppercase">
-            Official Brand Safety Audit Certificate
+            Brand Safety Audit Certificate
           </h2>
           <p className="text-xs text-slate-300 max-w-md mx-auto">
-            Cryptographically timestamped compliance certificate issued by BrandGuard AI Autonomous Sentinel Engine.
+            Payload-verified compliance certificate computed by BrandGuard AI Heuristic Engine.
           </p>
         </div>
 
@@ -146,13 +199,26 @@ Complies with SOC-2, FTC Truth in Advertising, and Enterprise Governance Standar
           </div>
         </div>
 
-        {/* Verification Cryptographic Hash */}
-        <div className="p-3 rounded-xl bg-slate-950/90 border border-white/5 text-[11px] font-mono text-slate-400 space-y-1">
-          <div className="flex items-center gap-1.5 text-indigo-300 font-bold">
-            <Hash className="w-3.5 h-3.5" />
-            Verification Hash
+        {/* Real Computed Verification Hash */}
+        <div className="p-3.5 rounded-xl bg-slate-950/90 border border-white/5 text-[11px] font-mono text-slate-400 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-indigo-300 font-bold">
+              <Hash className="w-3.5 h-3.5" />
+              SHA-256 Payload Hash
+            </span>
+            <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
+              Computed from Scan Record
+            </span>
           </div>
-          <div className="break-all text-slate-300">{certHash}</div>
+          <div className="break-all text-slate-300 bg-black/40 p-2 rounded border border-white/5">
+            {computedHash}
+          </div>
+          <div className="flex items-start gap-1.5 text-[10px] text-slate-400 pt-1">
+            <Info className="w-3.5 h-3.5 shrink-0 text-cyan-400 mt-0.5" />
+            <span>
+              This SHA-256 fingerprint is computed directly from the scan payload (content, ruleset, score, and findings). It verifies local data integrity. Note: Non-repudiation across external parties requires third-party notarization.
+            </span>
+          </div>
         </div>
 
         {/* Action Buttons */}
@@ -173,7 +239,6 @@ Complies with SOC-2, FTC Truth in Advertising, and Enterprise Governance Standar
             Print / Save Certificate
           </button>
         </div>
-
       </div>
     </div>
   );
