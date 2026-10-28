@@ -10,8 +10,8 @@ import {
   Download,
   ShieldCheck,
   AlertCircle,
-  HelpCircle,
   Check,
+  CheckCircle,
 } from 'lucide-react';
 import { BrandPolicy } from '../types/brandguard';
 
@@ -27,6 +27,7 @@ export const GuidelinesTab: React.FC<GuidelinesTabProps> = ({
   const [newTerm, setNewTerm] = useState('');
   const [newCompetitor, setNewCompetitor] = useState('');
   const [newDisclaimer, setNewDisclaimer] = useState('');
+  const [newClaim, setNewClaim] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   const handleSliderChange = (
@@ -56,6 +57,23 @@ export const GuidelinesTab: React.FC<GuidelinesTabProps> = ({
     onUpdatePolicy({
       ...currentPolicy,
       prohibitedTerms: currentPolicy.prohibitedTerms.filter((t) => t !== term),
+    });
+  };
+
+  const addRestrictedClaim = () => {
+    if (!newClaim.trim()) return;
+    if ((currentPolicy.restrictedClaims || []).includes(newClaim.trim())) return;
+    onUpdatePolicy({
+      ...currentPolicy,
+      restrictedClaims: [...(currentPolicy.restrictedClaims || []), newClaim.trim()],
+    });
+    setNewClaim('');
+  };
+
+  const removeRestrictedClaim = (claim: string) => {
+    onUpdatePolicy({
+      ...currentPolicy,
+      restrictedClaims: (currentPolicy.restrictedClaims || []).filter((c) => c !== claim),
     });
   };
 
@@ -103,13 +121,13 @@ export const GuidelinesTab: React.FC<GuidelinesTabProps> = ({
   };
 
   const handleSave = () => {
+    onUpdatePolicy(currentPolicy);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2500);
   };
 
   return (
     <div className="space-y-6">
-      
       {/* Top Banner */}
       <div className="glass-panel rounded-2xl p-5 border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -142,13 +160,12 @@ export const GuidelinesTab: React.FC<GuidelinesTabProps> = ({
             className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-1.5"
           >
             {saveSuccess ? <Check className="w-4 h-4 text-emerald-300" /> : <Save className="w-4 h-4" />}
-            {saveSuccess ? 'Rulebook Updated' : 'Save Rules'}
+            {saveSuccess ? 'Rulebook Persisted' : 'Save Rules'}
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
         {/* Left Column: Tone & Persona Sliders (5 Cols) */}
         <div className="lg:col-span-5 glass-panel rounded-2xl p-5 border border-white/10 space-y-6">
           <div className="flex items-center justify-between pb-3 border-b border-white/5">
@@ -228,24 +245,23 @@ export const GuidelinesTab: React.FC<GuidelinesTabProps> = ({
               Automated Sentinel Guardian
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              When content deviates beyond 25% from these calibrated voice parameters, the scanner flags a tone misalignment warning and offers automated executive rewrites.
+              When content deviates beyond these calibrated voice parameters, the scanner flags a tone misalignment warning and offers suggested rewrites.
             </p>
           </div>
         </div>
 
-        {/* Right Column: Prohibited Terms, Competitors & Disclaimers (7 Cols) */}
+        {/* Right Column: Prohibited Terms, Restricted Claims, Competitors & Disclaimers (7 Cols) */}
         <div className="lg:col-span-7 space-y-6">
-          
           {/* Prohibited Terms Manager */}
           <div className="glass-panel rounded-2xl p-5 border border-white/10 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-white/5">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-400" />
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                  Prohibited & High-Risk Lexicon ({currentPolicy.prohibitedTerms.length})
+                  Prohibited Lexicon ({currentPolicy.prohibitedTerms.length})
                 </h3>
               </div>
-              <span className="text-xs text-slate-400">Triggers instant block</span>
+              <span className="text-xs text-slate-400">Triggers critical block</span>
             </div>
 
             <div className="flex gap-2">
@@ -272,9 +288,57 @@ export const GuidelinesTab: React.FC<GuidelinesTabProps> = ({
                   key={term}
                   className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-1.5 font-medium"
                 >
-                  "{term}"
+                  &ldquo;{term}&rdquo;
                   <button
                     onClick={() => removeProhibitedTerm(term)}
+                    className="hover:text-white transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Restricted Claims Manager */}
+          <div className="glass-panel rounded-2xl p-5 border border-white/10 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-white/5">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-amber-400" />
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                  Restricted Claims ({(currentPolicy.restrictedClaims || []).length})
+                </h3>
+              </div>
+              <span className="text-xs text-slate-400">Requires proof</span>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newClaim}
+                onChange={(e) => setNewClaim(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addRestrictedClaim()}
+                placeholder="Add restricted claim (e.g. 'instant recovery', 'zero latency')..."
+                className="flex-1 px-3 py-1.5 rounded-xl bg-slate-950/80 border border-white/10 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+              />
+              <button
+                onClick={addRestrictedClaim}
+                className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              {(currentPolicy.restrictedClaims || []).map((claim) => (
+                <span
+                  key={claim}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-1.5 font-medium"
+                >
+                  &ldquo;{claim}&rdquo;
+                  <button
+                    onClick={() => removeRestrictedClaim(claim)}
                     className="hover:text-white transition-colors"
                   >
                     <X className="w-3 h-3" />
@@ -341,7 +405,7 @@ export const GuidelinesTab: React.FC<GuidelinesTabProps> = ({
                   Mandatory Legal Notices & Disclaimers ({currentPolicy.mandatoryDisclaimers.length})
                 </h3>
               </div>
-              <span className="text-xs text-slate-400">Required on promotional copy</span>
+              <span className="text-xs text-slate-400">Checked by complete text</span>
             </div>
 
             <div className="flex gap-2">
@@ -369,7 +433,7 @@ export const GuidelinesTab: React.FC<GuidelinesTabProps> = ({
                   className="p-2.5 rounded-lg bg-slate-950/80 border border-white/10 text-xs text-slate-300 flex items-start justify-between gap-2"
                 >
                   <span className="font-mono text-slate-300 leading-relaxed italic">
-                    "{disclaimer}"
+                    &ldquo;{disclaimer}&rdquo;
                   </span>
                   <button
                     onClick={() => removeDisclaimer(idx)}
@@ -381,11 +445,8 @@ export const GuidelinesTab: React.FC<GuidelinesTabProps> = ({
               ))}
             </div>
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 };

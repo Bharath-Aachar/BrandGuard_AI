@@ -1,8 +1,21 @@
 export type Severity = 'critical' | 'warning' | 'info' | 'compliant';
+export type FindingCategory = 'legal' | 'tone' | 'trademark' | 'claim' | 'toxicity';
+export type AnalysisMethod = 'deterministic' | 'contextual_ai';
+export type ScanStatus = 'approved' | 'review_required' | 'rejected' | 'not_scanned';
+export type ReviewWorkflowStatus = 'draft' | 'pending_review' | 'changes_requested' | 'approved' | 'rejected';
+export type UserRole = 'creator' | 'reviewer' | 'admin';
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  avatarUrl?: string;
+}
 
 export interface Violation {
   id: string;
-  category: 'legal' | 'tone' | 'trademark' | 'claim' | 'toxicity';
+  category: FindingCategory;
   severity: Severity;
   phrase: string;
   startIndex: number;
@@ -11,6 +24,11 @@ export interface Violation {
   explanation: string;
   suggestedFix: string;
   ruleViolated: string;
+  sourcePolicy?: string;
+  analysisMethod: AnalysisMethod;
+  isContextual?: boolean;
+  confidence?: number; // 0.0 - 1.0
+  needsHumanReview?: boolean;
 }
 
 export interface CategoryScore {
@@ -23,11 +41,12 @@ export interface CategoryScore {
 
 export interface ScanResult {
   overallScore: number; // 0 - 100
-  status: 'approved' | 'review_required' | 'rejected';
+  status: ScanStatus;
   summary: string;
   scannedAt: string;
   wordCount: number;
   readingTimeSeconds: number;
+  analysisMethod: AnalysisMethod;
   categories: {
     legal: CategoryScore;
     tone: CategoryScore;
@@ -37,6 +56,7 @@ export interface ScanResult {
   };
   violations: Violation[];
   aiRewrittenText?: string;
+  originalText?: string;
 }
 
 export interface BrandPolicy {
@@ -54,6 +74,45 @@ export interface BrandPolicy {
   restrictedClaims: string[];
 }
 
+export interface ReviewDecision {
+  id: string;
+  submissionId: string;
+  reviewerId: string;
+  reviewerName: string;
+  reviewerRole: UserRole;
+  status: ReviewWorkflowStatus;
+  comments: string;
+  revisionVersion: number;
+  createdAt: string;
+}
+
+export interface ContentSubmission {
+  id: string;
+  title: string;
+  content: string;
+  policyId: string;
+  version: number;
+  creatorId: string;
+  creatorName: string;
+  status: ReviewWorkflowStatus;
+  scanResult?: ScanResult;
+  reviews: ReviewDecision[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuditEvent {
+  id: string;
+  eventType: 'scan_executed' | 'submission_created' | 'submission_revised' | 'review_decided' | 'policy_updated' | 'threat_status_changed';
+  actorId: string;
+  actorName: string;
+  actorRole?: string;
+  targetId?: string;
+  details: string;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface ThreatMention {
   id: string;
   source: 'Twitter/X' | 'Reddit' | 'Ad Network' | 'TikTok' | 'Web Domain' | 'Press';
@@ -66,6 +125,7 @@ export interface ThreatMention {
   sentimentScore: number; // -1.0 to 1.0
   status: 'unresolved' | 'investigating' | 'mitigated';
   reachEstimated: string;
+  isSimulated?: boolean;
 }
 
 export interface PresetSample {

@@ -3,16 +3,12 @@
 import React, { useState } from 'react';
 import {
   Activity,
-  AlertTriangle,
   ShieldAlert,
   Globe,
   Radio,
-  ExternalLink,
   CheckCircle,
-  FileWarning,
   Send,
   PlusCircle,
-  Clock,
   Eye,
   Filter,
 } from 'lucide-react';
@@ -56,10 +52,11 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
       sentimentScore: -0.65,
       status: 'unresolved',
       reachEstimated: `${Math.floor(Math.random() * 50 + 10)}K views`,
+      isSimulated: true,
     };
 
     onAddThreat(newThreat);
-    showNotification('🚨 New threat signature detected by Sentinel Radar!');
+    showNotification('🚨 New simulated threat signature generated in sandbox!');
   };
 
   const filteredThreats = threats.filter((t) => {
@@ -72,7 +69,6 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
 
   return (
     <div className="space-y-6">
-      
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-slate-900 border border-indigo-500/40 text-slate-100 shadow-2xl flex items-center gap-3 animate-bounce">
@@ -81,9 +77,37 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
         </div>
       )}
 
+      {/* Top Banner with Honest Labeling */}
+      <div className="glass-panel rounded-2xl p-5 border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-rose-400">
+              Threat Intelligence Radar
+            </span>
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-400"></span>
+            <span className="text-xs text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+              Simulated Sandbox (Demo Mode)
+            </span>
+          </div>
+          <h1 className="text-2xl font-bold text-white tracking-tight mt-1">
+            Brand Reputation & Trademark Defense Radar
+          </h1>
+          <p className="text-sm text-slate-300 mt-0.5">
+            Simulated telemetry demonstrating automated trademark defense, typosquatting discovery, and takedown workflows. Note: No live web firehose is connected in this local environment.
+          </p>
+        </div>
+
+        <button
+          onClick={handleSimulateNewThreat}
+          className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-1.5 shrink-0"
+        >
+          <PlusCircle className="w-4 h-4 text-cyan-300" />
+          Inject Test Threat Event
+        </button>
+      </div>
+
       {/* Top Threat Intelligence Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        
         <div className="glass-panel rounded-2xl p-4 border border-white/10 flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
             <ShieldAlert className="w-6 h-6 text-rose-400" />
@@ -106,7 +130,7 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
               Monitored Nodes
             </span>
             <div className="text-2xl font-black text-white">1,480/sec</div>
-            <span className="text-[11px] text-emerald-400">DNS, Ads, Social</span>
+            <span className="text-[11px] text-amber-400">Simulated Telemetry</span>
           </div>
         </div>
 
@@ -119,7 +143,7 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
               Domains Guarded
             </span>
             <div className="text-2xl font-black text-white">42 TLDs</div>
-            <span className="text-[11px] text-slate-400">Anti-typosquatting on</span>
+            <span className="text-[11px] text-slate-400">Anti-typosquatting demo</span>
           </div>
         </div>
 
@@ -132,38 +156,32 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
               Mitigation Speed
             </span>
             <div className="text-2xl font-black text-emerald-400">3.8 mins</div>
-            <span className="text-[11px] text-slate-400">Avg takedown trigger</span>
+            <span className="text-[11px] text-slate-400">Avg response benchmark</span>
           </div>
         </div>
-
       </div>
 
       {/* Main Section: Radar Visualizer & Threat Stream */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Radar Graphic (4 Cols) */}
+        {/* Radar Graphic */}
         <div className="lg:col-span-4 glass-panel rounded-2xl p-5 border border-white/10 flex flex-col items-center justify-center relative overflow-hidden">
           <div className="flex items-center justify-between w-full pb-3 border-b border-white/5 mb-4">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-              Live Sentinel Sweep
+              Sentinel Simulation Sweep
             </span>
-            <span className="text-[11px] font-mono text-cyan-400">RADAR ACTIVE</span>
+            <span className="text-[11px] font-mono text-amber-400">SANDBOX</span>
           </div>
 
           {/* Animated Circular Radar Screen */}
           <div className="relative w-64 h-64 rounded-full border-2 border-indigo-500/30 bg-slate-950/80 flex items-center justify-center my-3 shadow-2xl shadow-indigo-500/10">
-            
-            {/* Concentric rings */}
             <div className="absolute w-48 h-48 rounded-full border border-indigo-500/20"></div>
             <div className="absolute w-32 h-32 rounded-full border border-indigo-500/20"></div>
             <div className="absolute w-16 h-16 rounded-full border border-indigo-500/25"></div>
 
-            {/* Crosshairs */}
             <div className="absolute w-full h-[1px] bg-indigo-500/20"></div>
             <div className="absolute h-full w-[1px] bg-indigo-500/20"></div>
 
-            {/* Rotating Radar Sweep Cone */}
             <div
               className="absolute inset-0 rounded-full animate-radar pointer-events-none"
               style={{
@@ -172,22 +190,18 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
               }}
             ></div>
 
-            {/* Simulated Blips / Targets */}
             <div className="absolute top-12 left-20 w-3 h-3 rounded-full bg-rose-500 animate-ping"></div>
             <div className="absolute top-12 left-20 w-3 h-3 rounded-full bg-rose-400"></div>
-
             <div className="absolute bottom-16 right-16 w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></div>
-
             <div className="absolute top-28 right-14 w-2 h-2 rounded-full bg-cyan-400"></div>
 
-            {/* Center icon */}
             <div className="z-10 w-8 h-8 rounded-full bg-indigo-600/60 border border-indigo-400 flex items-center justify-center">
               <Radio className="w-4 h-4 text-cyan-300" />
             </div>
           </div>
 
           <p className="text-xs text-slate-400 text-center mt-2 max-w-xs">
-            Continuously ingesting open web crawls, registrar feeds, and social media firehoses for unauthorized brand asset usage.
+            Visual demo of simulated brand monitoring across registrar and social media feeds.
           </p>
 
           <button
@@ -200,22 +214,19 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
           </button>
         </div>
 
-        {/* Threat Stream Feed (8 Cols) */}
+        {/* Threat Stream Feed */}
         <div className="lg:col-span-8 glass-panel rounded-2xl p-5 border border-white/10 flex flex-col">
-          
-          {/* Header & Filters */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-white/5 gap-3">
             <div>
               <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
                 <Activity className="w-4 h-4 text-rose-400" />
-                Live Reputation & Trademark Triage Feed
+                Reputation & Trademark Triage Feed
               </h2>
               <p className="text-xs text-slate-400">
-                Displaying real-time detected infractions with instant legal and mitigation workflows.
+                Displaying simulated threat incidents with triage and mitigation actions.
               </p>
             </div>
 
-            {/* Source & Severity Filter */}
             <div className="flex items-center gap-2 flex-wrap text-xs">
               <div className="flex items-center gap-1 bg-slate-900 px-2.5 py-1 rounded-lg border border-white/5">
                 <Filter className="w-3 h-3 text-slate-400" />
@@ -248,7 +259,6 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
             </div>
           </div>
 
-          {/* Stream Cards */}
           <div className="mt-4 space-y-3.5 flex-1 overflow-y-auto max-h-[500px] pr-1">
             {filteredThreats.map((threat) => {
               const isHigh = threat.threatLevel === 'high';
@@ -265,7 +275,6 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
                       : 'bg-slate-900/60 border-white/10 hover:border-indigo-500/30'
                   }`}
                 >
-                  {/* Card Header */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-white/10 text-slate-200 border border-white/15">
@@ -274,6 +283,9 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
                       <span className="text-xs font-bold text-white">{threat.author}</span>
                       <span className="text-xs text-slate-400 font-mono">{threat.handle}</span>
                       <span className="text-[11px] text-slate-500">• {threat.timestamp}</span>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-bold uppercase">
+                        Simulated
+                      </span>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -303,12 +315,10 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
                     </div>
                   </div>
 
-                  {/* Threat Description */}
                   <p className="text-xs text-slate-200 leading-relaxed font-sans mb-3">
                     {threat.content}
                   </p>
 
-                  {/* Metrics & Actions */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-white/5 text-xs">
                     <div className="flex items-center gap-4 text-slate-400 text-[11px]">
                       <span className="flex items-center gap-1">
@@ -323,7 +333,6 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
                       </span>
                     </div>
 
-                    {/* Quick Action Buttons */}
                     <div className="flex items-center gap-2">
                       {threat.status !== 'mitigated' ? (
                         <>
@@ -359,11 +368,8 @@ export const ThreatRadarTab: React.FC<ThreatRadarTabProps> = ({
               );
             })}
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 };

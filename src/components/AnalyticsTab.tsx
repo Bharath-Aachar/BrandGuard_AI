@@ -2,18 +2,12 @@
 
 import React, { useState } from 'react';
 import {
-  TrendingUp,
-  ShieldCheck,
-  AlertTriangle,
-  FileCheck2,
-  Share2,
-  Calendar,
   Download,
   Filter,
   CheckCircle,
-  XCircle,
-  Eye,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { useBrandGuard } from '@/context/BrandGuardContext';
 
 interface AuditLogItem {
   id: string;
@@ -22,7 +16,6 @@ interface AuditLogItem {
   date: string;
   score: number;
   status: 'passed' | 'warning' | 'rejected';
-  issuesCount: number;
   author: string;
 }
 
@@ -34,7 +27,6 @@ const MOCK_AUDIT_LOGS: AuditLogItem[] = [
     date: 'Oct 26, 2026',
     score: 98,
     status: 'passed',
-    issuesCount: 0,
     author: 'Elena Rostova (Marketing VP)',
   },
   {
@@ -44,7 +36,6 @@ const MOCK_AUDIT_LOGS: AuditLogItem[] = [
     date: 'Oct 25, 2026',
     score: 54,
     status: 'rejected',
-    issuesCount: 4,
     author: 'Liam Vance (Growth Lead)',
   },
   {
@@ -54,7 +45,6 @@ const MOCK_AUDIT_LOGS: AuditLogItem[] = [
     date: 'Oct 24, 2026',
     score: 78,
     status: 'warning',
-    issuesCount: 2,
     author: 'Chloe Simmons (Affiliate Mgr)',
   },
   {
@@ -64,7 +54,6 @@ const MOCK_AUDIT_LOGS: AuditLogItem[] = [
     date: 'Oct 22, 2026',
     score: 100,
     status: 'passed',
-    issuesCount: 0,
     author: 'Corporate Legal Sentinel',
   },
   {
@@ -74,14 +63,57 @@ const MOCK_AUDIT_LOGS: AuditLogItem[] = [
     date: 'Oct 20, 2026',
     score: 72,
     status: 'warning',
-    issuesCount: 2,
     author: 'Marcus Brody (PPC Specialist)',
   },
 ];
 
 export const AnalyticsTab: React.FC = () => {
+  const { auditEvents } = useBrandGuard();
   const [selectedChannel, setSelectedChannel] = useState<string>('all');
-  const [activeLogItem, setActiveLogItem] = useState<AuditLogItem | null>(null);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+
+  // Generate real CSV file from actual audit history events and demo logs
+  const handleExportCsv = () => {
+    setIsExporting(true);
+    try {
+      const headers = ['Audit ID', 'Target / Campaign', 'Type / Channel', 'Author / Actor', 'Date', 'Score / Status', 'Details'];
+      
+      const realRows = auditEvents.map((evt) => [
+        `"${evt.id}"`,
+        `"${evt.targetId || 'Platform Policy'}"`,
+        `"${evt.eventType}"`,
+        `"${evt.actorName}"`,
+        `"${evt.timestamp}"`,
+        `"Logged"`,
+        `"${(evt.details || '').replace(/"/g, '""')}"`,
+      ]);
+
+      const demoRows = MOCK_AUDIT_LOGS.map((log) => [
+        `"${log.id}"`,
+        `"${log.campaign}"`,
+        `"${log.channel}"`,
+        `"${log.author}"`,
+        `"${log.date}"`,
+        `"${log.score}% (${log.status})"`,
+        `"Historical simulated campaign scan log"`,
+      ]);
+
+      const csvContent = [headers.join(','), ...realRows.map((r) => r.join(',')), ...demoRows.map((r) => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', url);
+      downloadAnchor.setAttribute('download', `brandguard_compliance_audit_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('CSV export failed:', err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const filteredLogs = MOCK_AUDIT_LOGS.filter((item) => {
     if (selectedChannel !== 'all' && !item.channel.toLowerCase().includes(selectedChannel.toLowerCase())) {
@@ -92,7 +124,6 @@ export const AnalyticsTab: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      
       {/* Top Banner */}
       <div className="glass-panel rounded-2xl p-5 border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -101,32 +132,32 @@ export const AnalyticsTab: React.FC = () => {
               Audit & Governance Analytics
             </span>
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-            <span className="text-xs text-slate-400">30-Day Rolling Window</span>
+            <span className="text-xs text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+              Demo Analytics (Sample Telemetry)
+            </span>
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight mt-1">
             Enterprise Brand Health & Compliance Metrics
           </h1>
           <p className="text-sm text-slate-300 mt-0.5">
-            Cross-channel compliance velocity, risk incident suppression rates, and full audit logs for executive reporting.
+            Cross-channel compliance velocity, risk incident suppression rates, and verified audit logs for executive reporting.
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
           <button
-            onClick={() => {
-              alert('Comprehensive Compliance Telemetry Report (CSV) generated and ready.');
-            }}
-            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 transition-all flex items-center gap-1.5"
+            onClick={handleExportCsv}
+            disabled={isExporting}
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 transition-all flex items-center gap-1.5 disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5 text-cyan-400" />
-            Export Audit History (CSV)
+            {isExporting ? 'Generating...' : 'Export Audit History (CSV)'}
           </button>
         </div>
       </div>
 
-      {/* KPI Stats Grid */}
+      {/* KPI Stats Grid - Clearly labeled as Demo Analytics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        
         <div className="glass-panel rounded-2xl p-5 border border-white/10">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase text-slate-400">Global Health Index</span>
@@ -135,7 +166,7 @@ export const AnalyticsTab: React.FC = () => {
             </span>
           </div>
           <div className="text-3xl font-black text-white mt-2">94.6%</div>
-          <p className="text-xs text-slate-400 mt-1">Grade A+ across 1,248 assets</p>
+          <p className="text-xs text-slate-400 mt-1">Grade A+ across 1,248 assets (Demo Sample)</p>
         </div>
 
         <div className="glass-panel rounded-2xl p-5 border border-white/10">
@@ -157,7 +188,7 @@ export const AnalyticsTab: React.FC = () => {
             </span>
           </div>
           <div className="text-3xl font-black text-cyan-400 mt-2">14</div>
-          <p className="text-xs text-slate-400 mt-1">Typosquats & counterfeit ads</p>
+          <p className="text-xs text-slate-400 mt-1">Typosquats & counterfeit ads (Simulated)</p>
         </div>
 
         <div className="glass-panel rounded-2xl p-5 border border-white/10">
@@ -170,19 +201,17 @@ export const AnalyticsTab: React.FC = () => {
           <div className="text-3xl font-black text-emerald-400 mt-2">0</div>
           <p className="text-xs text-slate-400 mt-1">Zero FTC/SEC sanctions incurred</p>
         </div>
-
       </div>
 
       {/* Channel Breakdown & Incident Category Radar */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Channel Compliance Health (6 Cols) */}
+        {/* Channel Compliance Health */}
         <div className="lg:col-span-6 glass-panel rounded-2xl p-5 border border-white/10 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-white/5">
             <h2 className="text-sm font-bold text-white uppercase tracking-wider">
               Channel Compliance Scorecards
             </h2>
-            <span className="text-xs text-slate-400">Real-time telemetry</span>
+            <span className="text-xs text-slate-400">Sample Benchmarks</span>
           </div>
 
           <div className="space-y-3.5">
@@ -212,17 +241,16 @@ export const AnalyticsTab: React.FC = () => {
           </div>
         </div>
 
-        {/* Risk Distribution Breakdown (6 Cols) */}
+        {/* Risk Distribution Breakdown */}
         <div className="lg:col-span-6 glass-panel rounded-2xl p-5 border border-white/10 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-white/5">
             <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-              30-Day Risk Incident Classification
+              Risk Incident Classification
             </h2>
-            <span className="text-xs text-slate-400">Total 58 Flags Mitigated</span>
+            <span className="text-xs text-slate-400">Demo Heuristic Distribution</span>
           </div>
 
           <div className="grid grid-cols-2 gap-3 pt-1">
-            
             <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/5 space-y-1">
               <span className="text-xs font-semibold text-rose-300">Regulatory & Legal Claims</span>
               <div className="text-2xl font-black text-white">41%</div>
@@ -232,7 +260,7 @@ export const AnalyticsTab: React.FC = () => {
             <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/5 space-y-1">
               <span className="text-xs font-semibold text-amber-300">Technical Superlatives</span>
               <div className="text-2xl font-black text-white">28%</div>
-              <p className="text-[11px] text-slate-400">"100% unhackable", "zero latency"</p>
+              <p className="text-[11px] text-slate-400">&ldquo;100% unhackable&rdquo;, &ldquo;zero latency&rdquo;</p>
             </div>
 
             <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/5 space-y-1">
@@ -244,28 +272,72 @@ export const AnalyticsTab: React.FC = () => {
             <div className="p-3.5 rounded-xl bg-slate-900/80 border border-white/5 space-y-1">
               <span className="text-xs font-semibold text-purple-300">Brand Voice Misalignment</span>
               <div className="text-2xl font-black text-white">12%</div>
-              <p className="text-[11px] text-slate-400">Excessive slang & off-brand sarcasm</p>
+              <p className="text-[11px] text-slate-400">Excessive slang & off-brand copy</p>
             </div>
-
           </div>
 
           <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 flex items-center gap-2">
             <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>100% of detected pre-broadcast violations were auto-remediated before public release.</span>
+            <span>Automated checks flag noncompliant phrases before public release.</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Real Live Audit Events Log Table (Derived from actual workflow actions) */}
+      <div className="glass-panel rounded-2xl p-5 border border-white/10 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/5 gap-2">
+          <div>
+            <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+              <FileSpreadsheet className="w-4 h-4 text-indigo-400" />
+              Live Recorded Workflow & Audit Trail ({auditEvents.length} Events)
+            </h2>
+            <p className="text-xs text-slate-400">
+              Derives from actual user actions in the workspace: scan executions, submissions, revisions, and reviewer sign-offs.
+            </p>
           </div>
         </div>
 
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-950/80 text-slate-400 font-semibold uppercase tracking-wider border-b border-white/5">
+              <tr>
+                <th className="py-3 px-4">Event ID</th>
+                <th className="py-3 px-4">Action Type</th>
+                <th className="py-3 px-4">Actor</th>
+                <th className="py-3 px-4">Target</th>
+                <th className="py-3 px-4">Timestamp</th>
+                <th className="py-3 px-4">Details</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5 text-slate-200 font-mono text-[11px]">
+              {auditEvents.slice(0, 10).map((evt) => (
+                <tr key={evt.id} className="hover:bg-white/[0.02] transition-colors">
+                  <td className="py-3 px-4 text-indigo-400 font-bold">{evt.id}</td>
+                  <td className="py-3 px-4">
+                    <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-slate-300">
+                      {evt.eventType}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-white font-sans">{evt.actorName}</td>
+                  <td className="py-3 px-4 text-cyan-300">{evt.targetId || '–'}</td>
+                  <td className="py-3 px-4 text-slate-400">{new Date(evt.timestamp).toLocaleString()}</td>
+                  <td className="py-3 px-4 font-sans text-slate-300 max-w-xs truncate">{evt.details}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Historical Audit Log Table */}
+      {/* Historical Sample Scans Table */}
       <div className="glass-panel rounded-2xl p-5 border border-white/10 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/5 gap-2">
           <div>
             <h2 className="text-base font-bold text-white tracking-tight">
-              Recent Enterprise Audit Trail
+              Sample Historical Campaign Logs
             </h2>
             <p className="text-xs text-slate-400">
-              Cryptographically signed logs of all campaign asset scans and remediation actions.
+              Reference sample records across enterprise distribution channels.
             </p>
           </div>
 
@@ -287,7 +359,6 @@ export const AnalyticsTab: React.FC = () => {
           </div>
         </div>
 
-        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-950/80 text-slate-400 font-semibold uppercase tracking-wider border-b border-white/5">
@@ -341,7 +412,6 @@ export const AnalyticsTab: React.FC = () => {
           </table>
         </div>
       </div>
-
     </div>
   );
 };
